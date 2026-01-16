@@ -1,0 +1,93 @@
+---
+title: "Wego_Nova_Josh"
+output: html_document
+---
+Group ideas:
+1. We want to evaluate when TSP is on vs. off
+2. Take and individual route for important dates for each team member to evaluate. 
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+[WeGo Public Transit](https://www.wegotransit.com/) is a public transit system serving the Greater Nashville and Davidson County area. WeGo provides local and regional bus routes, the WeGo Star train service connecting Lebanon to downtown Nashville, along with several other transit services.
+
+The data for this project can be downloaded from [here](https://drive.google.com/drive/folders/1L8d3xEaPD13BMz_k-3G8XRRLvPIbNRq9?usp=sharing).
+
+Since 2019, WeGo has been using [**Transit Signal Priority (TSP)**](https://www.wegotransit.com/projects/transit-signal-priority/), a technology that helps to manage traffic flow more efficiently. For buses it reduces wait times at traffic signals by holding green lights longer, shortening red lights or in some cases allowing buses to bypass traffic. 
+
+The data that you have been provided was collected for trips on Route 50, Charlotte Pike. TSP has been used on portions of this route, with different periods of being on or off, either conditionally or unconditionally, , which creates a real-world “natural experiment.” For these timespans, TSP was used between White Bridge and MCC, including all intervening timepoints, in both directions.
+The important dates are as follows:
+
+* February 3rd @ 12 noon: TSP Turned On (Unconditional)
+
+* February 10th @ 12 noon: TSP Schedule-Conditional Priority Begins (Only buses more than 2 minutes late receive priority)
+
+* April 28th @ 12 noon: TSP Turned Off
+
+* May 5th @ 12 noon: TSP Turned On (Unconditional)
+
+* May 12th @ 12 noon: TSP Headway-Conditional TSP Priority Begins (Only gapped buses with actual leading headway more than 120% of scheduled headway receive priority)
+
+You should create a categorical TSP variable that reflects these phases.
+
+The main variable you will be studying in this project is **adherence**, which compares the actual departure time to the scheduled time and is included in the ADHERENCE column. A negative adherence value means that a bus left a time point late and a positive adherence indicates that the bus left the time point early. Buses with adherence values beyond negative 6 are generally considered late and beyond positive 1 are considered early. However, there is some additional logic where the staff applies waivers to allow early departures. For example, express buses that have already picked up everyone at a park-and-ride lot and are only dropping off passengers may be allowed to leave early.  Early departures are also permitted at the end of a trip (when TRIP_EDGE = 2), since they do not affect upstream passengers. **Note:** When determining whether a bus is early or late, it is advised that you use the 'ADJUSTED_EARLY_COUNT', 'ADJUSTED_LATE_COUNT', and 'ADJUSTED_ONTIME_COUNT' columns in order to account for the adjustments.
+
+**Main Research Question:** Does Transit Signal Priority (TSP) reduce the probability that a bus leaves a stop late?
+
+First, we needed to read in the CSV and assign it to a tibble.
+```{r}
+wego <- read_csv("../data/Route 50 Timepoint and Headway Data, 1-1-2023 through 5-12-2025.csv")
+
+head(wego)
+```
+
+Next, we want to add a TSP Status column into a column. 
+```{r}
+wego |> 
+  mutate(TSP_Status = 0, .before = CALENDAR_ID)
+```
+
+We needed to convert to HMS to be able to manipulate the data by time. 
+```{r}
+wego <- wego |>
+  mutate(
+    SCHEDULED_HMS = as_hms(
+      str_extract(as.character(SCHEDULED_TIME), "\\d{2}:\\d{2}:\\d{2}")
+    )
+  )
+wego
+```
+
+Combine the HMS with the date serviced column. 
+```{r}
+wego <- wego |>
+  mutate(
+    service_datetime = as_datetime(DATE) + SCHEDULED_HMS
+  )
+wego
+```
+
+Filter to just White Bridge (WHBG) and MCC (MCC_5). Need to add route and conditional
+```{r}
+wego <- wego |>
+  mutate(
+    tsp_active = case_when(
+      service_datetime < ymd_hms("2019-02-03 12:00:00") ~ 0L,
+      service_datetime < ymd_hms("2019-02-10 12:00:00") ~ 0L,
+      service_datetime < ymd_hms("2019-04-28 12:00:00") ~ 1L,
+      service_datetime < ymd_hms("2019-05-05 12:00:00") ~ 0L,
+      service_datetime < ymd_hms("2019-05-12 12:00:00") ~ 0L,
+      TRUE ~ 1L
+    )
+  )
+wego
+```
+
+We are working on filtering to the route including WHBG (white bridge) and MCC so that we can determine if we have active status in our TSP column. Then we will look at adherence and see how it is working with our times of routes.
+
+
+
+
+
