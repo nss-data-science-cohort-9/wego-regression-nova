@@ -1,0 +1,49 @@
+---
+title: "shannon_exploration"
+output: html_document
+---
+
+# Import libaries
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+# Read data
+```{r}
+wego <- read_csv("../data/Route 50 Timepoint and Headway Data, 1-1-2023 through 5-12-2025.csv")
+
+# Display head
+wego |> 
+  slice_head(n = 5)
+```
+
+# Create TSP_STATUS column
+```{r}
+wego <- wego |> 
+  mutate(TSP_STATUS = 0, .before = CALENDAR_ID)
+
+# Display head
+wego |> 
+  slice_head(n = 1)
+```
+
+```{r}
+# Convert timestamp columns
+wego <- wego |> 
+  mutate(SCHEDULED_HMS = hms::as_hms(str_extract(as.character(SCHEDULED_TIME), "\\d{2}:\\d{2}:\\d{2}")), .after = SCHEDULED_TIME) |> 
+  mutate(ACTUAL_ARRIVAL_HMS = hms::as_hms(str_extract(as.character(ACTUAL_ARRIVAL_TIME), "\\d{2}:\\d{2}:\\d{2}")), .after = ACTUAL_ARRIVAL_TIME) |> 
+  mutate(ACTUAL_DEPARTURE_HMS = hms::as_hms(str_extract(as.character(ACTUAL_DEPARTURE_TIME), "\\d{2}:\\d{2}:\\d{2}")), .after = ACTUAL_DEPARTURE_TIME)
+
+# Display head
+wego |> 
+  slice_head(n = 1)
+```
+
+
+May 5th @ 12 noon: TSP Turned On (Unconditional)
+```{r}
+# wego |> 
+#   filter(DATE == "2025-05-05" & ACTUAL_DEPARTURE_TIME >= 12:00:00)
+```
+
