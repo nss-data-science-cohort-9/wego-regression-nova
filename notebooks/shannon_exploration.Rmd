@@ -41,6 +41,103 @@ wego |>
   slice_head(n = 1)
 ```
 
+# Update TSP_STATUS for February 3rd @ 12 noon: TSP Turned On (Unconditional)
+
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN (153)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-02-03" & 
+                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN (108)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-02-03" & 
+                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
+  )
+```
+
+# Update TSP_STATUS for February 10th @ 12 noon: TSP Schedule-Conditional Priority Begins (Only buses more than 2 minutes late receive priority)
+
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN (39)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-02-10" & 
+                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
+                          ADHERENCE <= -2.0
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN (45)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-02-10" & 
+                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46") &
+                          ADHERENCE <= -2.0
+                        ),
+                      values = 1
+                    )
+  )
+```
+
+# Update TSP_STATUS for April 28th @ 12 noon: TSP Turned Off
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN (93)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-02-28" & 
+                          ACTUAL_DEPARTURE_HMS < hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN (74)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-02-28" & 
+                          ACTUAL_DEPARTURE_HMS < hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
+  )
+```
+
 # Update TSP_STATUS for May 5th @ 12 noon: TSP Turned On (Unconditional)
 
 ```{r}
@@ -105,27 +202,5 @@ wego <- wego |>
                       values = 1
                     )
   )
-```
-
-```{r}
-wego |> 
-  filter(
-    DATE == "2025-05-12" & 
-    ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-    ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-    TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
-    ACTUAL_HDWY >= SCHEDULED_HDWY * 1.2
-  ) # 18
-```
-
-```{r}
-wego |> 
-  filter(
-    DATE == "2025-05-12" & 
-    ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-    ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-    TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
-    ACTUAL_HDWY >= SCHEDULED_HDWY * 1.2
-  ) # 21
 ```
 
