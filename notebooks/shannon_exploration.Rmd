@@ -28,22 +28,38 @@ wego |>
   slice_head(n = 1)
 ```
 
-```{r}
 # Convert timestamp columns
+```{r}
 wego <- wego |> 
-  mutate(SCHEDULED_HMS = hms::as_hms(str_extract(as.character(SCHEDULED_TIME), "\\d{2}:\\d{2}:\\d{2}")), .after = SCHEDULED_TIME) |> 
-  mutate(ACTUAL_ARRIVAL_HMS = hms::as_hms(str_extract(as.character(ACTUAL_ARRIVAL_TIME), "\\d{2}:\\d{2}:\\d{2}")), .after = ACTUAL_ARRIVAL_TIME) |> 
-  mutate(ACTUAL_DEPARTURE_HMS = hms::as_hms(str_extract(as.character(ACTUAL_DEPARTURE_TIME), "\\d{2}:\\d{2}:\\d{2}")), .after = ACTUAL_DEPARTURE_TIME)
+  mutate(SCHEDULED_HMS = hms(str_sub(SCHEDULED_TIME, start = -8L, end = -1L)), .after = SCHEDULED_TIME) |> 
+  mutate(ACTUAL_ARRIVAL_HMS = hms(str_sub(ACTUAL_ARRIVAL_TIME, start = -8L, end = -1L)), .after = ACTUAL_ARRIVAL_TIME) |> 
+  mutate(ACTUAL_DEPARTURE_HMS = hms(str_sub(ACTUAL_DEPARTURE_TIME, start = -8L, end = -1L)), .after = ACTUAL_DEPARTURE_TIME) |> 
+  arrange(ACTUAL_DEPARTURE_HMS)
 
 # Display head
 wego |> 
   slice_head(n = 1)
 ```
 
+# Update TSP_STATUS for May 5th @ 12 noon: TSP Turned On (Unconditional)
 
-May 5th @ 12 noon: TSP Turned On (Unconditional)
 ```{r}
-# wego |> 
-#   filter(DATE == "2025-05-05" & ACTUAL_DEPARTURE_TIME >= 12:00:00)
+wego <- wego |> 
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-05-05" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                                    ),
+                            values = 1
+                          )
+  )
+
+# Display head
+wego |> 
+  slice_head(n = 1)
 ```
 
