@@ -9,6 +9,7 @@ Group ideas:
 ```{r}
 library(tidyverse)
 library(lubridate)
+library(dplyr)
 ```
 
 [WeGo Public Transit](https://www.wegotransit.com/) is a public transit system serving the Greater Nashville and Davidson County area. WeGo provides local and regional bus routes, the WeGo Star train service connecting Lebanon to downtown Nashville, along with several other transit services.
@@ -116,8 +117,7 @@ wego <- wego |>
                                       DATE == "2025-02-10" & 
                                       ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
                                       ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")&
-                                      ADHERENCE <= -2.0
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
                                     ),
                             values = 1
                           )
@@ -130,8 +130,7 @@ wego <- wego |>
                                       DATE == "2025-02-10" & 
                                       ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
                                       ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")&
-                                      ADHERENCE <= -2.0
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
                                     ), 
                             values = 1
                           )
@@ -217,8 +216,7 @@ wego <- wego |>
                           DATE == "2025-05-12" & 
                           ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
                           ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
-                          ACTUAL_HDWY >= SCHEDULED_HDWY * 1.2
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") 
                         ),
                       values = 1
                     )
@@ -231,8 +229,7 @@ wego <- wego |>
                           DATE == "2025-05-12" & 
                           ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
                           ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
-                          ACTUAL_HDWY >= SCHEDULED_HDWY * 1.2
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46") 
                         ),
                       values = 1
                     )
@@ -246,16 +243,56 @@ Here we are looking at only the active TSP Status.
 wego|> 
   filter(TSP_STATUS == 1)
 ```
-We had 844 instances that TSP was active. We now want to look at some of the effects that were taking place. 
+We had 1,283 instances that TSP was active. We now want to look at some of the effects that were taking place. 
+
+Variables we want to look at include:
+  Trip Features:
+    TIME_OF_DAY*
+    SCHEDULED_HMS
+    DAY_OF_WEEK*
+    YEAR (2025)  - create new tibble for just 2025
+    ROUTE_DIRECTION_NAME
+  
+  Operational Features:
+    OPERATOR
+    OVERLOAD_ID
+    STOP_CANCELED
+    DWELL_IN_MINS
+  
+  
 
 Now we have all of our TSP Status updated for each of the specific dates. We can now start to look at our logistic regression model. 
+Target Variable: ADJUSTED LATE COUNT
+Predictor Variable: TSP_STATUS
+```{r}
+wego_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS, data=wego, family="binomial")
+summary(wego_lr)
+```
+The P value is not significant. 
 
 ```{r}
-
+predict(
+  wego_lr,
+  newdata = data.frame(TSP_STATUS = c(1, 0)),
+  type = "response"
+)
 ```
+The TSP on = 7% chance of being late
+If it was off = 11% chance of being late
 
-
-
+```{r}
+wego_lr_sched_hms <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + hour(SCHEDULED_HMS), data=wego, family="binomial")
+summary(wego_lr_sched_hms)
+```
+```{r}
+predict(
+  wego_lr_sched_hms,
+  newdata = data.frame(TSP_STATUS = c(1, 0), SCHEDULED_HMS = 17),
+  type = "response"
+)
+```
+If the TSP Status was on at 5pm there was a 5% chance that it was late. 
+If the TSP Status was off at 5pm there was a 8% chance that it was late. 
 
 
 
