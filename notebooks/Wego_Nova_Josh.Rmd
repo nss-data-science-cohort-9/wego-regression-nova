@@ -43,49 +43,223 @@ wego <- read_csv("../data/Route 50 Timepoint and Headway Data, 1-1-2023 through 
 head(wego)
 ```
 
-Next, we want to add a TSP Status column into a column. 
+Next, we want to add a TSP Status column. 
 ```{r}
-wego |> 
-  mutate(TSP_Status = 0, .before = CALENDAR_ID)
+wego <- wego |> 
+  mutate(TSP_STATUS = 0, .before = CALENDAR_ID)
+wego
 ```
 
-We needed to convert to HMS to be able to manipulate the data by time. 
+We needed to convert to HMS to be able to manipulate the data by time. So we can isolate the usage of TSP. 
 ```{r}
 wego <- wego |>
   mutate(
-    SCHEDULED_HMS = as_hms(
+    SCHEDULED_HMS = hms(
       str_extract(as.character(SCHEDULED_TIME), "\\d{2}:\\d{2}:\\d{2}")
     )
   )
 wego
 ```
 
-Combine the HMS with the date serviced column. 
+Combine the HMS with the date serviced column to set up a filter so that TSP can be indicated. 
 ```{r}
-wego <- wego |>
-  mutate(
-    service_datetime = as_datetime(DATE) + SCHEDULED_HMS
-  )
+wego <- wego |> 
+  mutate(SCHEDULED_HMS = hms(SCHEDULED_TIME), .after = SCHEDULED_TIME) |> 
+  mutate(ACTUAL_ARRIVAL_HMS = hms(str_sub(ACTUAL_ARRIVAL_TIME, start = -8L, end = -1L)), .after = ACTUAL_ARRIVAL_TIME) |> 
+  mutate(ACTUAL_DEPARTURE_HMS = hms(str_sub(ACTUAL_DEPARTURE_TIME, start = -8L, end = -1L)), .after = ACTUAL_DEPARTURE_TIME)
 wego
 ```
 
-Filter to just White Bridge (WHBG) and MCC (MCC_5). Need to add route and conditional
+Here we are filling the TSP_STATUS with a 1 or a 0 to indicate if it is active. If the value is a 1, then it was active. We did this for each important date and included both routes to and from downtown. 
+
+* February 3rd @ 12 noon: TSP Turned On (Unconditional)
 ```{r}
-wego <- wego |>
+wego <- wego |> 
+  # FROM DOWNTOWN
   mutate(
-    tsp_active = case_when(
-      service_datetime < ymd_hms("2019-02-03 12:00:00") ~ 0L,
-      service_datetime < ymd_hms("2019-02-10 12:00:00") ~ 0L,
-      service_datetime < ymd_hms("2019-04-28 12:00:00") ~ 1L,
-      service_datetime < ymd_hms("2019-05-05 12:00:00") ~ 0L,
-      service_datetime < ymd_hms("2019-05-12 12:00:00") ~ 0L,
-      TRUE ~ 1L
-    )
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-02-03" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                                    ),
+                            values = 1
+                          )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-02-03" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                                    ),
+                            values = 1
+                          )
   )
-wego
+wego |>
+  filter(TSP_STATUS == 1, DATE == "2025-02-03")
 ```
 
-We are working on filtering to the route including WHBG (white bridge) and MCC so that we can determine if we have active status in our TSP column. Then we will look at adherence and see how it is working with our times of routes.
+* February 10th @ 12 noon: TSP Schedule-Conditional Priority Begins (Only buses more than 2 minutes late receive priority)
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-02-10" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")&
+                                      ADHERENCE <= -2.0
+                                    ),
+                            values = 1
+                          )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-02-10" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")&
+                                      ADHERENCE <= -2.0
+                                    ), 
+                            values = 1
+                          )
+  )
+wego |>
+  filter(TSP_STATUS == 1, DATE == "2025-02-10")
+```
+
+* April 28th @ 12 noon: TSP Turned Off
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-04-28" & 
+                                      ACTUAL_DEPARTURE_HMS < hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                                    ),
+                            values = 1
+                          )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-04-28" & 
+                                      ACTUAL_DEPARTURE_HMS < hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                                    ),
+                            values = 1
+                          )
+  )
+wego |>
+  filter(TSP_STATUS == 1, DATE == "2025-04-28")
+```
+
+* May 5th @ 12 noon: TSP Turned On (Unconditional)
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-05-05" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                                    ),
+                            values = 1
+                          )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                            x = TSP_STATUS,
+                            list = (
+                                      DATE == "2025-05-05" & 
+                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                                    ),
+                            values = 1
+                          )
+  )
+wego |>
+  filter(TSP_STATUS == 1, DATE == "2025-05-05")
+```
+
+* May 12th @ 12 noon: TSP Headway-Conditional TSP Priority Begins (Only gapped buses with actual leading headway more than 120% of scheduled headway receive priority)
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN (18)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-05-12" & 
+                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
+                          ACTUAL_HDWY >= SCHEDULED_HDWY * 1.2
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN (21)
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          DATE == "2025-05-12" & 
+                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") &
+                          ACTUAL_HDWY >= SCHEDULED_HDWY * 1.2
+                        ),
+                      values = 1
+                    )
+  )
+wego |>
+  filter(TSP_STATUS == 1, DATE == "2025-05-12")
+```
+
+Here we are looking at only the active TSP Status.
+```{r}
+wego|> 
+  filter(TSP_STATUS == 1)
+```
+We had 844 instances that TSP was active. We now want to look at some of the effects that were taking place. 
+
+Now we have all of our TSP Status updated for each of the specific dates. We can now start to look at our logistic regression model. 
+
+```{r}
+
+```
+
+
+
+
+
+
+
 
 
 
