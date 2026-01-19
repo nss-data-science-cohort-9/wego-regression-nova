@@ -295,10 +295,208 @@ If the TSP Status was on at 5pm there was a 5% chance that it was late.
 If the TSP Status was off at 5pm there was a 8% chance that it was late. 
 
 
+Next we will look at other variables in our logistic regression model. 
+
+Trip Features:
+TIME_OF_DAY* - Josh - done
+SCHEDULED_HMS - shannon and josh - done
+DAY_OF_WEEK* - Shannon
+YEAR (2025) - create new tibble for just 2025 - Shannon
+ROUTE_DIRECTION_NAME - Sivaraja
+
+Operational Features:
+OPERATOR - Shannon
+OVERLOAD_ID - Josh - done
+STOP_CANCELED - Josh - done 
+DWELL_IN_MINS - Sivaraja
+
+
+Time of Day will need to have a new column added before we can apply it to a Logistic regression model.
+```{r}
+wego <- wego |>
+  mutate(
+    hour = hour(SCHEDULED_HMS)
+  )
+
+wego <- wego |>
+  mutate(
+    TIME_OF_DAY = case_when(
+      hour >= 4  & hour <= 5  ~ "early_morning",
+      hour >= 6  & hour <= 8  ~ "morning_peak",
+      hour >= 9  & hour <= 14 ~ "midday",
+      hour >= 15 & hour <= 17 ~ "pm_peak",
+      hour >= 18 & hour <= 20 ~ "evening",
+      hour >= 21 | hour <= 1  ~ "late_night",
+      TRUE ~ NA_character_
+    )
+  )
+
+```
+
+Now let's model for the time of day:
+```{r}
+wego_time_of_day_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + TIME_OF_DAY, data=wego, family="binomial")
+summary(wego_time_of_day_lr)
+```
+```{r}
+wego <- wego |>
+  mutate(
+    TIME_OF_DAY = factor(
+      TIME_OF_DAY,
+      levels = c(
+        "early_morning",
+        "morning_peak",
+        "midday",
+        "pm_peak",
+        "evening",
+        "late_night"
+      )
+    )
+  )
+```
+
+
+```{r}
+pred_data <- pred_data |>
+  mutate(
+    predicted_prob_late = predict(
+      wego_time_of_day_lr,
+      newdata = pred_data,
+      type = "response"
+    )
+  )
+pred_data
+```
+
+I created a graph to visually see what is going on. 
+
+```{r}
+library(ggplot2)
+
+ggplot(pred_data,
+       aes(x = TIME_OF_DAY,
+           y = predicted_prob,
+           color = factor(TSP_STATUS),
+           group = TSP_STATUS)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = c("0" = "red", "1" = "blue"),
+    labels = c("TSP Off", "TSP On"),
+    name = "TSP Status"
+  ) +
+  labs(
+    x = "Time of Day",
+    y = "Predicted Probability of Being Late",
+    title = "Predicted Probability of Late Bus Departure by Time of Day",
+    subtitle = "Logistic Regression Estimates"
+  ) +
+  theme_minimal()
+
+```
+In summary:
+This figure shows that predicted lateness is generally lower when TSP is active, particularly during peak travel periods. 
+
+
+Next we will look at OVERLOAD_ID: signifies that the record is from a trip that was added by the dispatcher and was not part of the original schedule for the day. Usually, these are created when one vehicle breaks down and another is covering the same service. As far as the actual value, 0 means that this record was part of the original schedule, and anything other than 0 means it was added.
+
+
+```{r}
+wego_overload_id_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + OVERLOAD_ID, data=wego, family="binomial")
+summary(wego_overload_id_lr)
+```
+```{r}
+pred_overload <- expand.grid(
+  TSP_STATUS  = c(0, 1),
+  OVERLOAD_ID = c(0, 1)
+)
+
+pred_overload$predicted_prob <-predict(
+  wego_overload_id_lr,
+  newdata = pred_overload,
+  type = "response"
+)
+
+pred_overload <- pred_overload |>
+  mutate(
+    trip_type = if_else(OVERLOAD_ID == 1, "Overload", "Scheduled"),
+    tsp_status = if_else(TSP_STATUS == 1, "TSP On", "TSP Off")
+  )
+
+pred_overload
+```
+Let's plot this:
+```{r}
+ggplot(
+  pred_overload,
+  aes(
+    x = trip_type,
+    y = predicted_prob,
+    fill = tsp_status
+  )
+) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  labs(
+    x = "Trip Type",
+    y = "Predicted Probability of Being Late",
+    title = "Predicted Probability of Late Departure by Overload Status",
+    subtitle = "Logistic Regression Estimates",
+    fill = "TSP Status"
+  ) +
+  theme_minimal()
+
+```
+In summary:
+Predicted probabilities show that overload trips are substantially more likely to be late, but TSP reduces lateness for both scheduled and overload service.
 
 
 
+Next we will look at if a stop was canceled. 
+```{r}
+wego_stop_cancelled_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + STOP_CANCELLED, data=wego, family="binomial")
+summary(wego_stop_cancelled_lr)
+```
+```{r}
+pred_cancelled <- expand.grid(
+  TSP_STATUS  = c(0, 1),
+  STOP_CANCELLED = c(0, 1)
+)
 
+pred_cancelled$predicted_prob <-predict(
+  wego_stop_cancelled_lr,
+  newdata = pred_cancelled,
+  type = "response"
+)
 
+pred_cancelled <- pred_cancelled |>
+  mutate(
+    trip_type = if_else(STOP_CANCELLED == 1, "Canceled", "No Change"),
+    tsp_status = if_else(TSP_STATUS == 1, "TSP On", "TSP Off")
+  )
 
+pred_cancelled
+```
+Let's plot this: 
+```{r}
+ggplot(
+  pred_cancelled,
+  aes(
+    x = trip_type,
+    y = predicted_prob,
+    fill = tsp_status
+  )
+) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  labs(
+    x = "Stop Status",
+    y = "Predicted Probability of Being Late",
+    title = "Predicted Probability of Late Departure by Stop Cancellation Status",
+    subtitle = "Logistic Regression Estimates",
+    fill = "TSP Status"
+  ) +
+  theme_minimal()
+
+```
+In summary:
+Cancelled stops are associated with a higher predicted probability of lateness, but TSP reduces lateness regardless of cancellation status.
 
