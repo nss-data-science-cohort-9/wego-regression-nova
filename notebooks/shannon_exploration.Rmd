@@ -8,6 +8,8 @@ output: html_document
 library(tidyverse)
 library(ggplot2)
 library(lubridate)
+library(sjPlot)
+library(patchwork)
 ```
 
 # Read data
@@ -225,7 +227,7 @@ wego |>
 
 # Create a binary logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS
 ```{r}
-adj_late_tsp_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS, data = wego, family = "binomial")
+adj_late_tsp_lrm = glm(ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS), data = wego, family = "binomial")
 
 summary(adj_late_tsp_lrm)
 ```
@@ -234,12 +236,39 @@ summary(adj_late_tsp_lrm)
 adj_late_tsp_predict <- predict(
     adj_late_tsp_lrm,
     newdata = data.frame(
-      TSP_STATUS = c(1, 0)
+      TSP_STATUS = c(as.factor(1), as.factor(0))
     ),
     type = "response"
   )
 
 adj_late_tsp_predict
+```
+
+```{r}
+adj_late_tsp_plot <- plot_model(
+  adj_late_tsp_lrm,
+  type = "pred",
+  terms = "TSP_STATUS [1, 0]"
+) +
+  scale_x_continuous(breaks = seq(0, 1)) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: TSP STATUS",
+    y = "Probability of Late Departure"
+  )
+
+adj_late_tsp_plot
+```
+
+
+```{r}
+ggsave(
+  "../img/adj_late_tsp_plot.png",
+  plot = adj_late_tsp_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
 ```
 
 # Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and DAY_OF_WEEK
@@ -277,7 +306,7 @@ summary(adj_late_tsp_wkend_lrm)
 ```{r}
 predict(
   adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = c(1, 0), WEEKEND = 1),
+  newdata = data.frame(TSP_STATUS = c(1, 1, 0, 0), WEEKEND = c(1, 0, 1, 0)),
   type = "response"
 )
 ```
