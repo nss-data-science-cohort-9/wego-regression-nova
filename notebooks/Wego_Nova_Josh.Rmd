@@ -356,17 +356,20 @@ wego <- wego |>
 ```
 
 
+
 ```{r}
-pred_data <- pred_data |>
-  mutate(
+pred_data <- wego |>
+  select(TSP_STATUS, TIME_OF_DAY) |>
+    mutate(
     predicted_prob_late = predict(
       wego_time_of_day_lr,
-      newdata = pred_data,
+      newdata = wego,
       type = "response"
     )
   )
 pred_data
 ```
+
 
 I created a graph to visually see what is going on. 
 
@@ -375,13 +378,13 @@ library(ggplot2)
 
 ggplot(pred_data,
        aes(x = TIME_OF_DAY,
-           y = predicted_prob,
+           y = predicted_prob_late,
            color = factor(TSP_STATUS),
            group = TSP_STATUS)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
   scale_color_manual(
-    values = c("0" = "red", "1" = "blue"),
+    values = c("0" = "#6a69f6", "1" = "#27cccb"),
     labels = c("TSP Off", "TSP On"),
     name = "TSP Status"
   ) +
@@ -391,8 +394,10 @@ ggplot(pred_data,
     title = "Predicted Probability of Late Bus Departure by Time of Day",
     subtitle = "Logistic Regression Estimates"
   ) +
-  theme_minimal()
+  theme_minimal() +
+theme(text = element_text(size = 10))
 
+ggsave("../plots/time_of_day_plot.png")
 ```
 In summary:
 This figure shows that predicted lateness is generally lower when TSP is active, particularly during peak travel periods. 
@@ -405,6 +410,12 @@ Next we will look at OVERLOAD_ID: signifies that the record is from a trip that 
 wego_overload_id_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + OVERLOAD_ID, data=wego, family="binomial")
 summary(wego_overload_id_lr)
 ```
+```{r}
+wego |>
+  filter(OVERLOAD_ID == 1 & TSP_STATUS == 1)
+```
+
+
 ```{r}
 pred_overload <- expand.grid(
   TSP_STATUS  = c(0, 1),
@@ -443,7 +454,13 @@ ggplot(
     subtitle = "Logistic Regression Estimates",
     fill = "TSP Status"
   ) +
-  theme_minimal()
+  scale_fill_manual(
+    values = c("TSP Off" = "#ff7340", "TSP On" = "#27cccb")
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 10))
+
+ggsave("../plots/overload_plot.png")
 
 ```
 In summary:
@@ -494,9 +511,15 @@ ggplot(
     subtitle = "Logistic Regression Estimates",
     fill = "TSP Status"
   ) +
-  theme_minimal()
+  scale_fill_manual(
+    values = c("TSP Off" = "#b56cff", "TSP On" = "#888888")
+  ) +
+  theme_minimal()+
+  theme(text = element_text(size = 10))
+
+ggsave("../plots/cancelled_stops_plot.png")
 
 ```
 In summary:
-Cancelled stops are associated with a higher predicted probability of lateness, but TSP reduces lateness regardless of cancellation status.
+Cancelled stops are associated with a higher predicted probability of lateness, but TSP reduces lateness regardless of cancellation status. This was statistically significant. 
 
