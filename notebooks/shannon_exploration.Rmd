@@ -270,46 +270,71 @@ predict(
 ```{r}
 adj_late_tsp_wkend_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + WEEKEND, data = wego, family = "binomial")
 
-summary(adj_late_tsp_dywk_lrm)
+summary(adj_late_tsp_wkend_lrm)
 ```
 
-# Probability of being late when TSP is turned on during the weekend
+# Probability of being late when TSP is turned on/off during the weekend
 ```{r}
 predict(
   adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = 1, WEEKEND = 1),
+  newdata = data.frame(TSP_STATUS = c(1, 0), WEEKEND = 1),
   type = "response"
 )
 ```
 
-# Probability of being late when TSP is turned off during the weekend
+# Probability of being late when TSP is turned on/off during the workweek
 ```{r}
 predict(
   adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = 0, WEEKEND = 1),
+  newdata = data.frame(TSP_STATUS = c(1, 0), WEEKEND = 0),
   type = "response"
 )
 ```
 
-# Probability of being late when TSP is turned on during the workweek
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for just 2025
+```{r}
+wego_2025 <- wego |> 
+  filter(year(DATE) == 2025)
+```
+
+```{r}
+adj_late_tsp_2025_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS, data = wego_2025, family = "binomial")
+
+summary(adj_late_tsp_2025_lrm)
+```
+
+# Probability of being late when TSP is turned on/off in 2025
 ```{r}
 predict(
-  adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = 1, WEEKEND = 0),
+  adj_late_tsp_2025_lrm,
+  newdata = data.frame(TSP_STATUS = c(1, 0)),
   type = "response"
 )
 ```
 
-# Probability of being late when TSP is turned off during the workweek
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for same timeframe year over year
+```{r}
+dates <- c(date("2025-04-28"), date("2025-05-05"), date("2025-02-03"), date("2025-05-12"), date("2025-02-10"))
+
+wego_yr_over_yr <- wego |> 
+  filter(month(DATE) == month(dates) & day(DATE) == day(dates))
+```
+
+```{r}
+adj_late_tsp_yroveryr_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS, data = wego_yr_over_yr, family = "binomial")
+
+summary(adj_late_tsp_yroveryr_lrm)
+```
+
+# Probability of being late when TSP is turned on/off year over year
 ```{r}
 predict(
-  adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = 0, WEEKEND = 0),
+  adj_late_tsp_yroveryr_lrm,
+  newdata = data.frame(TSP_STATUS = c(1, 0)),
   type = "response"
 )
 ```
 
 # Model with WEEKDAY
 # YEAR (2025)
-# OPERATOR - Shannon
 # YEAR OVER YEAR
