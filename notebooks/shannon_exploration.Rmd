@@ -26,7 +26,7 @@ wego |>
 ```{r}
 wego <- wego |> 
   mutate(TSP_STATUS = 0, .before = CALENDAR_ID) |> 
-  mutate(DAY_OF_WEEK = weekdays(DATE), .after = DATE) |> 
+  mutate(DAY_OF_WEEK = weekdays(DATE), .after = DATE) |>
   mutate(WEEKEND = case_when(DAY_OF_WEEK %in% c("Saturday", "Sunday") ~ 1, .default = 0), .after = DAY_OF_WEEK)
 
 # Display head
@@ -316,8 +316,9 @@ adj_late_tspoff_dywk_predict
 adj_late_tsponoff_dywk_predict <- data.frame(
   TSP_ON = adj_late_tspon_dywk_predict,
   TSP_OFF = adj_late_tspoff_dywk_predict
-) |> 
+) |>
   mutate(DAY_OF_WEEK = day_of_week) |> 
+  mutate(DAY_OF_WEEK = factor(DAY_OF_WEEK, levels = day_of_week)) |>  
   pivot_longer(
     cols = c(TSP_ON, TSP_OFF),
     names_to = "TSP_STATUS",
@@ -494,7 +495,7 @@ adj_late_tsp_2025_plot
 ggsave(
   "../img/adj_late_tsp_2025_plot.png",
   plot = adj_late_tsp_2025_plot,
-  width = 4,
+  width = 4.5,
   height = 4,
   dpi = 300
 )
