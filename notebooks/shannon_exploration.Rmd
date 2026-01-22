@@ -228,7 +228,11 @@ wego |>
 
 # Create a binary logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS
 ```{r}
-adj_late_tsp_lrm = glm(ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS), data = wego, family = "binomial")
+adj_late_tsp_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS),
+  data = wego,
+  family = "binomial"
+)
 
 summary(adj_late_tsp_lrm)
 ```
@@ -276,7 +280,11 @@ ggsave(
 
 # Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and DAY_OF_WEEK
 ```{r}
-adj_late_tsp_dywk_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + DAY_OF_WEEK, data = wego, family = "binomial")
+adj_late_tsp_dywk_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ TSP_STATUS + DAY_OF_WEEK,
+  data = wego,
+  family = "binomial"
+)
 
 summary(adj_late_tsp_dywk_lrm)
 ```
@@ -307,9 +315,16 @@ adj_late_tspoff_dywk_predict
 
 # Merge tibbles and pivot TSP_STATUS longer
 ```{r}
-adj_late_tsponoff_dywk_predict <- data.frame(TSP_ON = adj_late_tspon_dywk_predict, TSP_OFF = adj_late_tspoff_dywk_predict) |> 
+adj_late_tsponoff_dywk_predict <- data.frame(
+  TSP_ON = adj_late_tspon_dywk_predict,
+  TSP_OFF = adj_late_tspoff_dywk_predict
+) |> 
   mutate(DAY_OF_WEEK = day_of_week) |> 
-  pivot_longer(cols = c(TSP_ON, TSP_OFF), names_to = "TSP_STATUS", values_to = "PROBABILITY")
+  pivot_longer(
+    cols = c(TSP_ON, TSP_OFF),
+    names_to = "TSP_STATUS",
+    values_to = "PROBABILITY"
+  )
 
 adj_late_tsponoff_dywk_predict
 ```
@@ -317,16 +332,23 @@ adj_late_tsponoff_dywk_predict
 # Plot TSP on and off with day of the week
 ```{r}
 adj_late_tsponoff_dywk_plot <- adj_late_tsponoff_dywk_predict |> 
-  ggplot(aes(x = DAY_OF_WEEK, y = PROBABILITY, color = TSP_STATUS, group = TSP_STATUS)) +
+  ggplot(
+    aes(
+      x = DAY_OF_WEEK,
+      y = PROBABILITY,
+      color = TSP_STATUS,
+      group = TSP_STATUS
+    )
+  ) +
   geom_line(linewidth = 1) +
   labs(
     title = "WeGo Predicted Probability of Late Departure",
     subtitle = "Independent Variables: TSP STATUS + DAY OF WEEK",
     y = "Probability of Late Departure",
-    x = "Day of Week") +
+    x = "Day of Week"
+  ) +
   scale_y_continuous(labels = percent)
   
-
 adj_late_tsponoff_dywk_plot
 ```
 
@@ -343,27 +365,75 @@ ggsave(
 
 # Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and WEEKEND
 ```{r}
-adj_late_tsp_wkend_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + WEEKEND, data = wego, family = "binomial")
+adj_late_tsp_wkend_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ TSP_STATUS + WEEKEND,
+  data = wego,
+  family = "binomial")
 
 summary(adj_late_tsp_wkend_lrm)
 ```
 
-# Probability of being late when TSP is turned on/off during the weekend
+# Probability of being late when TSP is turned on during the weekend/weekday
 ```{r}
-predict(
+adj_late_tspon_wkend_predict <- predict(
   adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = c(1, 1, 0, 0), WEEKEND = c(1, 0, 1, 0)),
+  newdata = data.frame(TSP_STATUS = 1, WEEKEND = c(1, 0)),
   type = "response"
 )
+
+adj_late_tspon_wkend_predict
 ```
 
-# Probability of being late when TSP is turned on/off during the workweek
+# Probability of being late when TSP is turned off during the weekend/weekday
 ```{r}
-predict(
+adj_late_tspoff_wkend_predict <- predict(
   adj_late_tsp_wkend_lrm,
-  newdata = data.frame(TSP_STATUS = c(1, 0), WEEKEND = 0),
+  newdata = data.frame(TSP_STATUS = 0, WEEKEND = c(1, 0)),
   type = "response"
 )
+
+adj_late_tspoff_wkend_predict
+```
+
+# Merge tibbles and pivot TSP_STATUS longer
+```{r}
+adj_late_tsponoff_wkend_predict <- data.frame(
+  TSP_ON = adj_late_tspon_wkend_predict,
+  TSP_OFF = adj_late_tspoff_wkend_predict
+) |> 
+  mutate(WEEKEND = c("WEEKEND", "WEEKDAY")) |> 
+  pivot_longer(
+    cols = c(TSP_ON, TSP_OFF),
+    names_to = "TSP_STATUS",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsponoff_wkend_predict
+```
+
+# Plot TSP on and off with day of the week
+```{r}
+adj_late_tsponoff_wkend_plot <- adj_late_tsponoff_wkend_predict |> 
+  ggplot(
+    aes(
+      x = WEEKEND,
+      y = PROBABILITY,
+      fill = TSP_STATUS
+    )
+  ) +
+  geom_col(
+    position = "dodge",
+    width = 0.5
+  ) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variables: TSP STATUS + WEEKEND",
+    y = "Probability of Late Departure",
+    x = ""
+  ) +
+  scale_y_continuous(labels = percent)
+  
+adj_late_tsponoff_wkend_plot
 ```
 
 # Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for just 2025
