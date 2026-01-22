@@ -241,9 +241,7 @@ summary(adj_late_tsp_lrm)
 ```{r}
 adj_late_tsp_predict <- predict(
     adj_late_tsp_lrm,
-    newdata = data.frame(
-      TSP_STATUS = c(as.factor(1), as.factor(0))
-    ),
+    newdata = data.frame(TSP_STATUS = c(1, 0)),
     type = "response"
   )
 
@@ -436,6 +434,17 @@ adj_late_tsponoff_wkend_plot <- adj_late_tsponoff_wkend_predict |>
 adj_late_tsponoff_wkend_plot
 ```
 
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsponoff_wkend_plot.png",
+  plot = adj_late_tsponoff_wkend_plot,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
 # Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for just 2025
 ```{r}
 wego_2025 <- wego |> 
@@ -443,17 +452,51 @@ wego_2025 <- wego |>
 ```
 
 ```{r}
-adj_late_tsp_2025_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS, data = wego_2025, family = "binomial")
+adj_late_tsp_2025_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS),
+  data = wego_2025,
+  family = "binomial"
+)
 
 summary(adj_late_tsp_2025_lrm)
 ```
 
 # Probability of being late when TSP is turned on/off in 2025
 ```{r}
-predict(
+adj_late_tsp_2025_predict <- predict(
+    adj_late_tsp_2025_lrm,
+    newdata = data.frame(TSP_STATUS = c(1, 0)),
+    type = "response"
+  )
+
+adj_late_tsp_2025_predict
+```
+
+# Plot TSP on and off predict
+```{r}
+adj_late_tsp_2025_plot <- plot_model(
   adj_late_tsp_2025_lrm,
-  newdata = data.frame(TSP_STATUS = c(1, 0)),
-  type = "response"
+  type = "pred",
+  terms = "TSP_STATUS"
+) +
+  scale_x_continuous(breaks = seq(0, 1)) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: 2025 TSP STATUS",
+    y = "Probability of Late Departure"
+  )
+
+adj_late_tsp_2025_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsp_2025_plot.png",
+  plot = adj_late_tsp_2025_plot,
+  width = 4,
+  height = 4,
+  dpi = 300
 )
 ```
 
