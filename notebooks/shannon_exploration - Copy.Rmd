@@ -1,0 +1,485 @@
+---
+title: "shannon_exploration"
+output: html_document
+---
+
+# Import libaries
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(sjPlot)
+library(patchwork)
+library(scales)
+```
+
+# Read data
+```{r}
+wego <- read_csv("../data/Route 50 Timepoint and Headway Data, 1-1-2023 through 5-12-2025.csv")
+
+# Display head
+wego |> 
+  slice_head(n = 5)
+```
+
+# Create columns
+```{r}
+wego <- wego |> 
+  mutate(TSP_STATUS = 0, .before = CALENDAR_ID) |> 
+  mutate(DAY_OF_WEEK = weekdays(DATE), .after = DATE) |>
+  mutate(WEEKEND = case_when(DAY_OF_WEEK %in% c("Saturday", "Sunday") ~ 1, .default = 0), .after = DAY_OF_WEEK)
+
+# Display head
+wego |> 
+  slice_head(n = 1)
+```
+
+# Convert timestamp columns
+```{r}
+wego <- wego |> 
+  mutate(SCHEDULED_HMS = hms(str_sub(SCHEDULED_TIME, start = -8L, end = -1L)), .after = SCHEDULED_TIME) |> 
+  mutate(ACTUAL_ARRIVAL_HMS = hms(str_sub(ACTUAL_ARRIVAL_TIME, start = -8L, end = -1L)), .after = ACTUAL_ARRIVAL_TIME) |> 
+  mutate(ACTUAL_DEPARTURE_HMS = hms(str_sub(ACTUAL_DEPARTURE_TIME, start = -8L, end = -1L)), .after = ACTUAL_DEPARTURE_TIME) |> 
+  arrange(ACTUAL_DEPARTURE_HMS)
+
+# Display head
+wego |> 
+  slice_head(n = 1)
+```
+
+# Update TSP_STATUS for February 3rd @ 12 noon: TSP Turned On (Unconditional)
+April 28th @ 12 noon: TSP Turned Off
+
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-02-03" & DATE < "2025-04-28") |
+                             (DATE == "2025-02-03" & ACTUAL_DEPARTURE_HMS > hms("12:00:00")) |
+                             (DATE == "2025-04-28" & ACTUAL_DEPARTURE_HMS < hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-02-03" & DATE < "2025-04-28") |
+                             (DATE == "2025-02-03" & ACTUAL_DEPARTURE_HMS > hms("12:00:00")) |
+                             (DATE == "2025-04-28" & ACTUAL_DEPARTURE_HMS < hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
+  )
+
+wego |> 
+  filter(DATE >= "2025-02-03" & DATE <= "2025-04-28" & TSP_STATUS == 1) |> 
+  arrange(DATE)
+```
+
+
+# Update TSP_STATUS for May 5th @ 12 noon: TSP Turned On (Unconditional)
+
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-05-05") |
+                             (DATE == "2025-05-05" & ACTUAL_DEPARTURE_HMS > hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-05-05") |
+                             (DATE == "2025-05-05" & ACTUAL_DEPARTURE_HMS > hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
+  )
+
+wego |> 
+  filter(DATE >= "2025-05-05" & TSP_STATUS == 1) |> 
+  arrange(DATE)
+```
+
+```{r}
+wego |> 
+  filter(TSP_STATUS == 1)
+```
+
+# Create a binary logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS
+```{r}
+adj_late_tsp_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS),
+  data = wego,
+  family = "binomial"
+)
+
+summary(adj_late_tsp_lrm)
+```
+
+# Predict TSP on and off
+```{r}
+adj_late_tsp_predict <- predict(
+    adj_late_tsp_lrm,
+    newdata = data.frame(TSP_STATUS = c(1, 0)),
+    type = "response"
+  )
+
+adj_late_tsp_predict
+```
+
+# Plot TSP on and off predict
+```{r}
+adj_late_tsp_plot <- plot_model(
+  adj_late_tsp_lrm,
+  type = "pred",
+  terms = "TSP_STATUS"
+) +
+  scale_x_continuous(
+    breaks = seq(0, 1),
+    labels = c("TSP OFF", "TSP ON")
+  ) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: TSP STATUS",
+    y = "Probability of Late Departure"
+  )
+
+adj_late_tsp_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsp_plot.png",
+  plot = adj_late_tsp_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and DAY_OF_WEEK
+```{r}
+adj_late_tsp_dywk_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ TSP_STATUS + DAY_OF_WEEK,
+  data = wego,
+  family = "binomial"
+)
+
+summary(adj_late_tsp_dywk_lrm)
+```
+
+# Probability of being late when TSP is turned for each day of the week
+```{r}
+day_of_week <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+adj_late_tspon_dywk_predict <- predict(
+  adj_late_tsp_dywk_lrm,
+  newdata = data.frame(TSP_STATUS = 1, DAY_OF_WEEK = day_of_week),
+  type = "response"
+)
+
+adj_late_tspon_dywk_predict
+```
+
+# Probability of being late when TSP is turned off for each day of the week
+```{r}
+adj_late_tspoff_dywk_predict <- predict(
+  adj_late_tsp_dywk_lrm,
+  newdata = data.frame(TSP_STATUS = 0, DAY_OF_WEEK = day_of_week),
+  type = "response"
+)
+
+adj_late_tspoff_dywk_predict
+```
+
+# Merge tibbles and pivot TSP_STATUS longer
+```{r}
+adj_late_tsponoff_dywk_predict <- data.frame(
+  TSP_ON = adj_late_tspon_dywk_predict,
+  TSP_OFF = adj_late_tspoff_dywk_predict
+) |>
+  mutate(DAY_OF_WEEK = day_of_week) |> 
+  mutate(DAY_OF_WEEK = factor(DAY_OF_WEEK, levels = day_of_week)) |>  
+  pivot_longer(
+    cols = c(TSP_ON, TSP_OFF),
+    names_to = "TSP_STATUS",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsponoff_dywk_predict
+```
+
+# Plot TSP on and off with day of the week
+```{r}
+adj_late_tsponoff_dywk_plot <- adj_late_tsponoff_dywk_predict |> 
+  ggplot(
+    aes(
+      x = DAY_OF_WEEK,
+      y = PROBABILITY,
+      color = TSP_STATUS,
+      group = TSP_STATUS
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variables: TSP STATUS + DAY OF WEEK",
+    y = "Probability of Late Departure",
+    x = "Day of Week"
+  ) +
+  scale_y_continuous(labels = percent)
+  
+adj_late_tsponoff_dywk_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsponoff_dywk_plot.png",
+  plot = adj_late_tsponoff_dywk_plot,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and WEEKEND
+```{r}
+adj_late_tsp_wkend_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ TSP_STATUS + WEEKEND,
+  data = wego,
+  family = "binomial")
+
+summary(adj_late_tsp_wkend_lrm)
+```
+
+# Probability of being late when TSP is turned on during the weekend/weekday
+```{r}
+adj_late_tspon_wkend_predict <- predict(
+  adj_late_tsp_wkend_lrm,
+  newdata = data.frame(TSP_STATUS = 1, WEEKEND = c(1, 0)),
+  type = "response"
+)
+
+adj_late_tspon_wkend_predict
+```
+
+# Probability of being late when TSP is turned off during the weekend/weekday
+```{r}
+adj_late_tspoff_wkend_predict <- predict(
+  adj_late_tsp_wkend_lrm,
+  newdata = data.frame(TSP_STATUS = 0, WEEKEND = c(1, 0)),
+  type = "response"
+)
+
+adj_late_tspoff_wkend_predict
+```
+
+# Merge tibbles and pivot TSP_STATUS longer
+```{r}
+adj_late_tsponoff_wkend_predict <- data.frame(
+  TSP_ON = adj_late_tspon_wkend_predict,
+  TSP_OFF = adj_late_tspoff_wkend_predict
+) |> 
+  mutate(WEEKEND = c("WEEKEND", "WEEKDAY")) |> 
+  pivot_longer(
+    cols = c(TSP_ON, TSP_OFF),
+    names_to = "TSP_STATUS",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsponoff_wkend_predict
+```
+
+# Plot TSP on and off with day of the week
+```{r}
+adj_late_tsponoff_wkend_plot <- adj_late_tsponoff_wkend_predict |> 
+  ggplot(
+    aes(
+      x = WEEKEND,
+      y = PROBABILITY,
+      fill = TSP_STATUS
+    )
+  ) +
+  geom_col(
+    position = "dodge",
+    width = 0.5
+  ) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variables: TSP STATUS + WEEKEND",
+    y = "Probability of Late Departure",
+    x = ""
+  ) +
+  scale_y_continuous(labels = percent)
+  
+adj_late_tsponoff_wkend_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsponoff_wkend_plot.png",
+  plot = adj_late_tsponoff_wkend_plot,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for just 2025
+```{r}
+wego_2025 <- wego |> 
+  filter(year(DATE) == 2025)
+```
+
+```{r}
+adj_late_tsp_2025_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS),
+  data = wego_2025,
+  family = "binomial"
+)
+
+summary(adj_late_tsp_2025_lrm)
+```
+
+# Probability of being late when TSP is turned on/off in 2025
+```{r}
+adj_late_tsp_2025_predict <- predict(
+    adj_late_tsp_2025_lrm,
+    newdata = data.frame(TSP_STATUS = c(1, 0)),
+    type = "response"
+  )
+
+adj_late_tsp_2025_predict
+```
+
+# Plot TSP on and off predict
+```{r}
+adj_late_tsp_2025_plot <- plot_model(
+  adj_late_tsp_2025_lrm,
+  type = "pred",
+  terms = "TSP_STATUS"
+) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: 2025 TSP STATUS",
+    x = "",
+    y = "Probability of Late Departure"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 1),
+    labels = c("TSP OFF", "TSP ON")
+  )
+
+adj_late_tsp_2025_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsp_2025_plot.png",
+  plot = adj_late_tsp_2025_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Compare all to 2025
+```{r}
+adj_late_tsp_all_2025_predict <- data.frame(
+  PROB_2025 = adj_late_tsp_2025_predict,
+  PROB_ALL = adj_late_tsp_predict
+) |> 
+  mutate(TSP_STATUS = c(as.factor(1), as.factor(0))) |>  
+  pivot_longer(
+    cols = c(PROB_2025, PROB_ALL),
+    names_to = "DATASET",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsp_all_2025_predict
+```
+
+# Plot
+```{r}
+adj_late_tsp_all_2025_plot <- adj_late_tsp_all_2025_predict |> 
+  ggplot(aes(x = TSP_STATUS, y = PROBABILITY, color = DATASET, group = DATASET)) +
+  geom_jitter(width = 0.1, height = 0, size = 4) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Compare All Observations to 2025 Observations",
+    x = "",
+    y = "Probability of Late Departure"
+  ) +
+    scale_x_discrete(
+      limits = c(as.factor(0), as.factor(1)),
+      labels = c("TSP OFF", "TSP ON")
+    ) +
+  scale_y_continuous(labels = percent)
+
+adj_late_tsp_all_2025_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../img/adj_late_tsp_all_2025_plot.png",
+  plot = adj_late_tsp_all_2025_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for same timeframe year over year
+```{r}
+dates <- c(date("2025-04-28"), date("2025-05-05"), date("2025-02-03"), date("2025-05-12"), date("2025-02-10"))
+
+wego_yr_over_yr <- wego |> 
+  filter(month(DATE) == month(dates) & day(DATE) == day(dates))
+```
+
+```{r}
+adj_late_tsp_yroveryr_lrm = glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS, data = wego_yr_over_yr, family = "binomial")
+
+summary(adj_late_tsp_yroveryr_lrm)
+```
+
+# Probability of being late when TSP is turned on/off year over year
+```{r}
+predict(
+  adj_late_tsp_yroveryr_lrm,
+  newdata = data.frame(TSP_STATUS = c(1, 0)),
+  type = "response"
+)
+```
+
+# Model with WEEKDAY
+# YEAR (2025)
+# YEAR OVER YEAR
