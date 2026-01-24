@@ -1,0 +1,764 @@
+---
+title: "Wego_Nova_Josh"
+output: html_document
+---
+Group ideas:
+1. We want to evaluate when TSP is on vs. off
+2. Take and individual route for important dates for each team member to evaluate. 
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(sjPlot)
+# library(patchwork)
+library(scales)
+```
+
+[WeGo Public Transit](https://www.wegotransit.com/) is a public transit system serving the Greater Nashville and Davidson County area. WeGo provides local and regional bus routes, the WeGo Star train service connecting Lebanon to downtown Nashville, along with several other transit services.
+
+The data for this project can be downloaded from [here](https://drive.google.com/drive/folders/1L8d3xEaPD13BMz_k-3G8XRRLvPIbNRq9?usp=sharing).
+
+Since 2019, WeGo has been using [**Transit Signal Priority (TSP)**](https://www.wegotransit.com/projects/transit-signal-priority/), a technology that helps to manage traffic flow more efficiently. For buses it reduces wait times at traffic signals by holding green lights longer, shortening red lights or in some cases allowing buses to bypass traffic. 
+
+The data that you have been provided was collected for trips on Route 50, Charlotte Pike. TSP has been used on portions of this route, with different periods of being on or off, either conditionally or unconditionally, , which creates a real-world “natural experiment.” For these timespans, TSP was used between White Bridge and MCC, including all intervening timepoints, in both directions.
+The important dates are as follows:
+
+* February 3rd @ 12 noon: TSP Turned On (Unconditional)
+
+* February 10th @ 12 noon: TSP Schedule-Conditional Priority Begins (Only buses more than 2 minutes late receive priority)
+
+* April 28th @ 12 noon: TSP Turned Off
+
+* May 5th @ 12 noon: TSP Turned On (Unconditional)
+
+* May 12th @ 12 noon: TSP Headway-Conditional TSP Priority Begins (Only gapped buses with actual leading headway more than 120% of scheduled headway receive priority)
+
+You should create a categorical TSP variable that reflects these phases.
+
+The main variable you will be studying in this project is **adherence**, which compares the actual departure time to the scheduled time and is included in the ADHERENCE column. A negative adherence value means that a bus left a time point late and a positive adherence indicates that the bus left the time point early. Buses with adherence values beyond negative 6 are generally considered late and beyond positive 1 are considered early. However, there is some additional logic where the staff applies waivers to allow early departures. For example, express buses that have already picked up everyone at a park-and-ride lot and are only dropping off passengers may be allowed to leave early.  Early departures are also permitted at the end of a trip (when TRIP_EDGE = 2), since they do not affect upstream passengers. **Note:** When determining whether a bus is early or late, it is advised that you use the 'ADJUSTED_EARLY_COUNT', 'ADJUSTED_LATE_COUNT', and 'ADJUSTED_ONTIME_COUNT' columns in order to account for the adjustments.
+
+**Main Research Question:** Does Transit Signal Priority (TSP) reduce the probability that a bus leaves a stop late?
+
+First, we needed to read in the CSV and assign it to a tibble.
+```{r}
+wego <- read_csv("../data/Route 50 Timepoint and Headway Data, 1-1-2023 through 5-12-2025.csv")
+
+head(wego)
+```
+
+Next, we want to add a columns.
+```{r}
+wego <- wego |> 
+  mutate(TSP_STATUS = 0, .before = CALENDAR_ID) |> # TSP Status indicator
+  mutate(DAY_OF_WEEK = weekdays(DATE), .after = DATE) |> # Day of the week
+  mutate(WEEKEND = case_when(DAY_OF_WEEK %in% c("Saturday", "Sunday") ~ 1, .default = 0), .after = DAY_OF_WEEK) # Weekend indicator
+wego
+```
+
+We needed to convert to HMS to be able to manipulate the data by time. So we can isolate the usage of TSP. 
+```{r}
+wego <- wego |>
+  mutate(
+    SCHEDULED_HMS = hms(
+      str_extract(as.character(SCHEDULED_TIME), "\\d{2}:\\d{2}:\\d{2}")
+    )
+  )
+wego
+```
+
+Combine the HMS with the date serviced column to set up a filter so that TSP can be indicated. 
+```{r}
+wego <- wego |> 
+  mutate(SCHEDULED_HMS = hms(SCHEDULED_TIME), .after = SCHEDULED_TIME) |> 
+  mutate(ACTUAL_ARRIVAL_HMS = hms(str_sub(ACTUAL_ARRIVAL_TIME, start = -8L, end = -1L)), .after = ACTUAL_ARRIVAL_TIME) |> 
+  mutate(ACTUAL_DEPARTURE_HMS = hms(str_sub(ACTUAL_DEPARTURE_TIME, start = -8L, end = -1L)), .after = ACTUAL_DEPARTURE_TIME)
+wego
+```
+
+Here we are filling the TSP_STATUS with a 1 or a 0 to indicate if it is active. If the value is a 1, then it was active. We did this for each important date and included both routes to and from downtown. 
+
+* Update TSP_STATUS for February 3rd @ 12 noon: TSP Turned On (Unconditional) to April 28th @ 12 noon: TSP Turned Off
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-02-03" & DATE < "2025-04-28") |
+                             (DATE == "2025-02-03" & ACTUAL_DEPARTURE_HMS > hms("12:00:00")) |
+                             (DATE == "2025-04-28" & ACTUAL_DEPARTURE_HMS < hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-02-03" & DATE < "2025-04-28") |
+                             (DATE == "2025-02-03" & ACTUAL_DEPARTURE_HMS > hms("12:00:00")) |
+                             (DATE == "2025-04-28" & ACTUAL_DEPARTURE_HMS < hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
+  )
+
+wego |> 
+  filter(DATE >= "2025-02-03" & DATE <= "2025-04-28" & TSP_STATUS == 1) |> 
+  arrange(DATE)
+```
+
+* Update TSP_STATUS for May 5th @ 12 noon: TSP Turned On (Unconditional) to end.
+
+```{r}
+wego <- wego |> 
+  # FROM DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-05-05") |
+                             (DATE == "2025-05-05" & ACTUAL_DEPARTURE_HMS > hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
+  ) |> 
+  # TO DOWNTOWN
+  mutate(
+      TSP_STATUS = replace(
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-05-05") |
+                             (DATE == "2025-05-05" & ACTUAL_DEPARTURE_HMS > hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
+  )
+
+wego |> 
+  filter(DATE >= "2025-05-05" & TSP_STATUS == 1) |> 
+  arrange(DATE)
+```
+
+Here we are looking at only the active TSP Status.
+```{r}
+wego |> 
+  filter(TSP_STATUS == 1)
+```
+
+We had 38,434 instances that TSP was active. We now want to look at some of the effects that were taking place. 
+
+Variables we want to look at include:
+  Trip Features:
+    TIME_OF_DAY*
+    SCHEDULED_HMS
+    DAY_OF_WEEK*
+    YEAR (2025)  - create new tibble for just 2025
+    ROUTE_DIRECTION_NAME
+  
+  Operational Features:
+    OPERATOR
+    OVERLOAD_ID
+    STOP_CANCELED
+    DWELL_IN_MINS
+  
+  
+
+Now we have all of our TSP Status updated for each of the specific dates. We can now start to look at our logistic regression model. 
+Target Variable: ADJUSTED LATE COUNT
+Predictor Variable: TSP_STATUS
+```{r}
+wego_lr <- glm(ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS), data=wego, family="binomial")
+summary(wego_lr)
+```
+The P value is significant. 
+
+```{r}
+wego_predict <- predict(
+  wego_lr,
+  newdata = data.frame(TSP_STATUS = c(1, 0)),
+  type = "response"
+)
+
+wego_predict
+```
+The TSP on = 11.456% chance of being late
+If it was off = 11.852% chance of being late
+
+# Plot ADJUSTED_LATE_COUNT ~ TSP_STATUS probability
+```{r}
+adj_late_tsp_plot <- plot_model(
+  wego_lr,
+  type = "pred",
+  terms = "TSP_STATUS"
+) +
+  scale_x_continuous(
+    breaks = seq(0, 1),
+    labels = c("TSP OFF", "TSP ON")
+  ) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: TSP STATUS",
+    y = "Probability of Late Departure"
+  )
+
+adj_late_tsp_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../plots/adj_late_tsp_plot.png",
+  plot = adj_late_tsp_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
+```
+
+```{r}
+wego_lr_sched_hms <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + hour(SCHEDULED_HMS), data=wego, family="binomial")
+summary(wego_lr_sched_hms)
+```
+```{r}
+predict(
+  wego_lr_sched_hms,
+  newdata = data.frame(TSP_STATUS = c(1, 0), SCHEDULED_HMS = 17),
+  type = "response"
+)
+```
+If the TSP Status was on at 5pm there was a 5% chance that it was late. 
+If the TSP Status was off at 5pm there was a 8% chance that it was late. 
+
+
+Next we will look at other variables in our logistic regression model. 
+
+Trip Features:
+TIME_OF_DAY* - Josh - done
+SCHEDULED_HMS - shannon and josh - done
+DAY_OF_WEEK* - Shannon
+YEAR (2025) - create new tibble for just 2025 - Shannon
+ROUTE_DIRECTION_NAME - Sivaraja
+
+Operational Features:
+OPERATOR - Shannon
+OVERLOAD_ID - Josh - done
+STOP_CANCELED - Josh - done 
+DWELL_IN_MINS - Sivaraja
+
+
+Time of Day will need to have a new column added before we can apply it to a Logistic regression model.
+```{r}
+wego <- wego |>
+  mutate(
+    hour = hour(SCHEDULED_HMS)
+  )
+
+wego <- wego |>
+  mutate(
+    TIME_OF_DAY = case_when(
+      hour >= 4  & hour <= 5  ~ "early_morning",
+      hour >= 6  & hour <= 8  ~ "morning_peak",
+      hour >= 9  & hour <= 14 ~ "midday",
+      hour >= 15 & hour <= 17 ~ "pm_peak",
+      hour >= 18 & hour <= 20 ~ "evening",
+      hour >= 21 | hour <= 1  ~ "late_night",
+      TRUE ~ NA_character_
+    )
+  )
+
+```
+
+Now let's model for the time of day:
+```{r}
+wego_time_of_day_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + TIME_OF_DAY, data=wego, family="binomial")
+summary(wego_time_of_day_lr)
+```
+* TSP_STATUS is not statistically significant
+
+
+```{r}
+wego <- wego |>
+  mutate(
+    TIME_OF_DAY = factor(
+      TIME_OF_DAY,
+      levels = c(
+        "early_morning",
+        "morning_peak",
+        "midday",
+        "pm_peak",
+        "evening",
+        "late_night"
+      )
+    )
+  )
+```
+
+
+
+```{r}
+pred_data <- wego |>
+  select(TSP_STATUS, TIME_OF_DAY) |>
+    mutate(
+    predicted_prob_late = predict(
+      wego_time_of_day_lr,
+      newdata = wego,
+      type = "response"
+    )
+  )
+pred_data
+```
+
+
+I created a graph to visually see what is going on. 
+
+```{r}
+time_of_day_plot <- ggplot(pred_data,
+       aes(x = TIME_OF_DAY,
+           y = predicted_prob_late,
+           color = factor(TSP_STATUS),
+           group = TSP_STATUS)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = c("0" = "#6a69f6", "1" = "#27cccb"),
+    labels = c("TSP Off", "TSP On"),
+    name = "TSP Status"
+  ) +
+  labs(
+    x = "Time of Day",
+    y = "Predicted Probability of Being Late",
+    title = "Predicted Probability of Late Bus Departure by Time of Day",
+    subtitle = "Logistic Regression Estimates"
+  ) +
+  theme_minimal() +
+theme(text = element_text(size = 10))
+
+time_of_day_plot
+```
+
+
+# Save plot
+```{r}
+ggsave(
+  "../plots/time_of_day_plot.png",
+  plot = time_of_day_plot,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
+In summary:
+This figure shows that predicted lateness is generally lower when TSP is active, particularly during peak travel periods. 
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and DAY_OF_WEEK
+```{r}
+adj_late_tsp_dywk_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ TSP_STATUS + DAY_OF_WEEK,
+  data = wego,
+  family = "binomial"
+)
+
+summary(adj_late_tsp_dywk_lrm)
+```
+* TSP_STATUS is statistically significant
+
+# Probability of being late when TSP is turned for each day of the week
+```{r}
+day_of_week <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+adj_late_tspon_dywk_predict <- predict(
+  adj_late_tsp_dywk_lrm,
+  newdata = data.frame(TSP_STATUS = 1, DAY_OF_WEEK = day_of_week),
+  type = "response"
+)
+
+adj_late_tspon_dywk_predict
+```
+
+# Probability of being late when TSP is turned off for each day of the week
+```{r}
+adj_late_tspoff_dywk_predict <- predict(
+  adj_late_tsp_dywk_lrm,
+  newdata = data.frame(TSP_STATUS = 0, DAY_OF_WEEK = day_of_week),
+  type = "response"
+)
+
+adj_late_tspoff_dywk_predict
+```
+
+# Merge tibbles and pivot TSP_STATUS longer
+```{r}
+adj_late_tsponoff_dywk_predict <- data.frame(
+  TSP_ON = adj_late_tspon_dywk_predict,
+  TSP_OFF = adj_late_tspoff_dywk_predict
+) |>
+  mutate(DAY_OF_WEEK = day_of_week) |> 
+  mutate(DAY_OF_WEEK = factor(DAY_OF_WEEK, levels = day_of_week)) |>  
+  pivot_longer(
+    cols = c(TSP_ON, TSP_OFF),
+    names_to = "TSP_STATUS",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsponoff_dywk_predict
+```
+
+# Plot TSP on and off with day of the week
+```{r}
+adj_late_tsponoff_dywk_plot <- adj_late_tsponoff_dywk_predict |> 
+  ggplot(
+    aes(
+      x = DAY_OF_WEEK,
+      y = PROBABILITY,
+      color = TSP_STATUS,
+      group = TSP_STATUS
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variables: TSP STATUS + DAY OF WEEK",
+    y = "Probability of Late Departure",
+    x = "Day of Week"
+  ) +
+  scale_y_continuous(labels = percent)
+  
+adj_late_tsponoff_dywk_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../plots/adj_late_tsponoff_dywk_plot.png",
+  plot = adj_late_tsponoff_dywk_plot,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS and WEEKEND
+```{r}
+adj_late_tsp_wkend_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ TSP_STATUS + WEEKEND,
+  data = wego,
+  family = "binomial")
+
+summary(adj_late_tsp_wkend_lrm)
+```
+* TSP_STATUS is statistically significant
+
+# Probability of being late when TSP is turned on during the weekend/weekday
+```{r}
+adj_late_tspon_wkend_predict <- predict(
+  adj_late_tsp_wkend_lrm,
+  newdata = data.frame(TSP_STATUS = 1, WEEKEND = c(1, 0)),
+  type = "response"
+)
+
+adj_late_tspon_wkend_predict
+```
+
+# Probability of being late when TSP is turned off during the weekend/weekday
+```{r}
+adj_late_tspoff_wkend_predict <- predict(
+  adj_late_tsp_wkend_lrm,
+  newdata = data.frame(TSP_STATUS = 0, WEEKEND = c(1, 0)),
+  type = "response"
+)
+
+adj_late_tspoff_wkend_predict
+```
+
+# Merge tibbles and pivot TSP_STATUS longer
+```{r}
+adj_late_tsponoff_wkend_predict <- data.frame(
+  TSP_ON = adj_late_tspon_wkend_predict,
+  TSP_OFF = adj_late_tspoff_wkend_predict
+) |> 
+  mutate(WEEKEND = c("WEEKEND", "WEEKDAY")) |> 
+  pivot_longer(
+    cols = c(TSP_ON, TSP_OFF),
+    names_to = "TSP_STATUS",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsponoff_wkend_predict
+```
+
+# Plot TSP on and off with day of the week
+```{r}
+adj_late_tsponoff_wkend_plot <- adj_late_tsponoff_wkend_predict |> 
+  ggplot(
+    aes(
+      x = WEEKEND,
+      y = PROBABILITY,
+      fill = TSP_STATUS
+    )
+  ) +
+  geom_col(
+    position = "dodge",
+    width = 0.5
+  ) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variables: TSP STATUS + WEEKEND",
+    y = "Probability of Late Departure",
+    x = ""
+  ) +
+  scale_y_continuous(labels = percent)
+  
+adj_late_tsponoff_wkend_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../plots/adj_late_tsponoff_wkend_plot.png",
+  plot = adj_late_tsponoff_wkend_plot,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Create logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS for just 2025
+```{r}
+wego_2025 <- wego |> 
+  filter(year(DATE) == 2025)
+```
+
+```{r}
+adj_late_tsp_2025_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS),
+  data = wego_2025,
+  family = "binomial"
+)
+
+summary(adj_late_tsp_2025_lrm)
+```
+* TSP_STATUS is statistically significant
+
+# Probability of being late when TSP is turned on/off in 2025
+```{r}
+adj_late_tsp_2025_predict <- predict(
+    adj_late_tsp_2025_lrm,
+    newdata = data.frame(TSP_STATUS = c(1, 0)),
+    type = "response"
+  )
+
+adj_late_tsp_2025_predict
+```
+
+# Plot TSP on and off predict
+```{r}
+adj_late_tsp_2025_plot <- plot_model(
+  adj_late_tsp_2025_lrm,
+  type = "pred",
+  terms = "TSP_STATUS"
+) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: 2025 TSP STATUS",
+    x = "",
+    y = "Probability of Late Departure"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 1),
+    labels = c("TSP OFF", "TSP ON")
+  )
+
+adj_late_tsp_2025_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../plots/adj_late_tsp_2025_plot.png",
+  plot = adj_late_tsp_2025_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Compare all to 2025
+```{r}
+adj_late_tsp_all_2025_predict <- data.frame(
+  PROB_2025 = adj_late_tsp_2025_predict,
+  PROB_ALL = wego_predict
+) |> 
+  mutate(TSP_STATUS = c(as.factor(1), as.factor(0))) |>  
+  pivot_longer(
+    cols = c(PROB_2025, PROB_ALL),
+    names_to = "DATASET",
+    values_to = "PROBABILITY"
+  )
+
+adj_late_tsp_all_2025_predict
+```
+
+# Plot
+```{r}
+adj_late_tsp_all_2025_plot <- adj_late_tsp_all_2025_predict |> 
+  ggplot(aes(x = TSP_STATUS, y = PROBABILITY, color = DATASET, group = DATASET)) +
+  geom_jitter(width = 0.1, height = 0, size = 4) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Compare All Observations to 2025 Observations",
+    x = "",
+    y = "Probability of Late Departure"
+  ) +
+    scale_x_discrete(
+      limits = c(as.factor(0), as.factor(1)),
+      labels = c("TSP OFF", "TSP ON")
+    ) +
+  scale_y_continuous(labels = percent)
+
+adj_late_tsp_all_2025_plot
+```
+
+# Save plot
+```{r}
+ggsave(
+  "../plots/adj_late_tsp_all_2025_plot.png",
+  plot = adj_late_tsp_all_2025_plot,
+  width = 4.5,
+  height = 4,
+  dpi = 300
+)
+```
+
+Next we will look at OVERLOAD_ID: signifies that the record is from a trip that was added by the dispatcher and was not part of the original schedule for the day. Usually, these are created when one vehicle breaks down and another is covering the same service. As far as the actual value, 0 means that this record was part of the original schedule, and anything other than 0 means it was added.
+
+
+```{r}
+wego_overload_id_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + OVERLOAD_ID, data=wego, family="binomial")
+summary(wego_overload_id_lr)
+```
+```{r}
+wego |>
+  filter(OVERLOAD_ID == 1 & TSP_STATUS == 1)
+```
+
+
+```{r}
+pred_overload <- expand.grid(
+  TSP_STATUS  = c(0, 1),
+  OVERLOAD_ID = c(0, 1)
+)
+
+pred_overload$predicted_prob <-predict(
+  wego_overload_id_lr,
+  newdata = pred_overload,
+  type = "response"
+)
+
+pred_overload <- pred_overload |>
+  mutate(
+    trip_type = if_else(OVERLOAD_ID == 1, "Overload", "Scheduled"),
+    tsp_status = if_else(TSP_STATUS == 1, "TSP On", "TSP Off")
+  )
+
+pred_overload
+```
+Let's plot this:
+```{r}
+ggplot(
+  pred_overload,
+  aes(
+    x = trip_type,
+    y = predicted_prob,
+    fill = tsp_status
+  )
+) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  labs(
+    x = "Trip Type",
+    y = "Predicted Probability of Being Late",
+    title = "Predicted Probability of Late Departure by Overload Status",
+    subtitle = "Logistic Regression Estimates",
+    fill = "TSP Status"
+  ) +
+  scale_fill_manual(
+    values = c("TSP Off" = "#ff7340", "TSP On" = "#27cccb")
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 10))
+
+ggsave("../plots/overload_plot.png")
+
+```
+In summary:
+Predicted probabilities show that overload trips are substantially more likely to be late, but TSP reduces lateness for both scheduled and overload service.
+
+
+
+Next we will look at if a stop was canceled. 
+```{r}
+wego_stop_cancelled_lr <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + STOP_CANCELLED, data=wego, family="binomial")
+summary(wego_stop_cancelled_lr)
+```
+```{r}
+pred_cancelled <- expand.grid(
+  TSP_STATUS  = c(0, 1),
+  STOP_CANCELLED = c(0, 1)
+)
+
+pred_cancelled$predicted_prob <-predict(
+  wego_stop_cancelled_lr,
+  newdata = pred_cancelled,
+  type = "response"
+)
+
+pred_cancelled <- pred_cancelled |>
+  mutate(
+    trip_type = if_else(STOP_CANCELLED == 1, "Canceled", "No Change"),
+    tsp_status = if_else(TSP_STATUS == 1, "TSP On", "TSP Off")
+  )
+
+pred_cancelled
+```
+Let's plot this: 
+```{r}
+ggplot(
+  pred_cancelled,
+  aes(
+    x = trip_type,
+    y = predicted_prob,
+    fill = tsp_status
+  )
+) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  labs(
+    x = "Stop Status",
+    y = "Predicted Probability of Being Late",
+    title = "Predicted Probability of Late Departure by Stop Cancellation Status",
+    subtitle = "Logistic Regression Estimates",
+    fill = "TSP Status"
+  ) +
+  scale_fill_manual(
+    values = c("TSP Off" = "#b56cff", "TSP On" = "#888888")
+  ) +
+  theme_minimal()+
+  theme(text = element_text(size = 10))
+
+ggsave("../plots/cancelled_stops_plot.png")
+
+```
+In summary:
+Cancelled stops are associated with a higher predicted probability of lateness, but TSP reduces lateness regardless of cancellation status. This was statistically significant. 
