@@ -10,6 +10,8 @@ Group ideas:
 library(tidyverse)
 library(lubridate)
 library(dplyr)
+library(sjPlot)
+library(scales)
 ```
 
 [WeGo Public Transit](https://www.wegotransit.com/) is a public transit system serving the Greater Nashville and Davidson County area. WeGo provides local and regional bus routes, the WeGo Star train service connecting Lebanon to downtown Nashville, along with several other transit services.
@@ -79,97 +81,35 @@ wego <- wego |>
   # FROM DOWNTOWN
   mutate(
       TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-02-03" & 
-                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
-                                    ),
-                            values = 1
-                          )
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-02-03" & DATE < "2025-04-28") |
+                             (DATE == "2025-02-03" & ACTUAL_DEPARTURE_HMS > hms("12:00:00")) |
+                             (DATE == "2025-04-28" & ACTUAL_DEPARTURE_HMS < hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
   ) |> 
   # TO DOWNTOWN
   mutate(
       TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-02-03" & 
-                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
-                                    ),
-                            values = 1
-                          )
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-02-03" & DATE < "2025-04-28") |
+                             (DATE == "2025-02-03" & ACTUAL_DEPARTURE_HMS > hms("12:00:00")) |
+                             (DATE == "2025-04-28" & ACTUAL_DEPARTURE_HMS < hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
   )
-wego |>
-  filter(TSP_STATUS == 1, DATE == "2025-02-03")
-```
 
-* February 10th @ 12 noon: TSP Schedule-Conditional Priority Begins (Only buses more than 2 minutes late receive priority)
-```{r}
-wego <- wego |> 
-  # FROM DOWNTOWN
-  mutate(
-      TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-02-10" & 
-                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
-                                    ),
-                            values = 1
-                          )
-  ) |> 
-  # TO DOWNTOWN
-  mutate(
-      TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-02-10" & 
-                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
-                                    ), 
-                            values = 1
-                          )
-  )
-wego |>
-  filter(TSP_STATUS == 1, DATE == "2025-02-10")
-```
-
-* April 28th @ 12 noon: TSP Turned Off
-```{r}
-wego <- wego |> 
-  # FROM DOWNTOWN
-  mutate(
-      TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-04-28" & 
-                                      ACTUAL_DEPARTURE_HMS < hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
-                                    ),
-                            values = 1
-                          )
-  ) |> 
-  # TO DOWNTOWN
-  mutate(
-      TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-04-28" & 
-                                      ACTUAL_DEPARTURE_HMS < hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
-                                    ),
-                            values = 1
-                          )
-  )
-wego |>
-  filter(TSP_STATUS == 1, DATE == "2025-04-28")
+wego |> 
+  filter(DATE >= "2025-02-03" & DATE <= "2025-04-28" & TSP_STATUS == 1) |> 
+  arrange(DATE)
 ```
 
 * May 5th @ 12 noon: TSP Turned On (Unconditional)
@@ -178,65 +118,36 @@ wego <- wego |>
   # FROM DOWNTOWN
   mutate(
       TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-05-05" & 
-                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
-                                    ),
-                            values = 1
-                          )
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-05-05") |
+                             (DATE == "2025-05-05" & ACTUAL_DEPARTURE_HMS > hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG")
+                        ),
+                      values = 1
+                    )
   ) |> 
   # TO DOWNTOWN
   mutate(
       TSP_STATUS = replace(
-                            x = TSP_STATUS,
-                            list = (
-                                      DATE == "2025-05-05" & 
-                                      ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                                      ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                                      TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
-                                    ),
-                            values = 1
-                          )
+                      x = TSP_STATUS,
+                      list = (
+                          ((DATE > "2025-05-05") |
+                             (DATE == "2025-05-05" & ACTUAL_DEPARTURE_HMS > hms("12:00:00"))) &
+                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
+                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46")
+                        ),
+                      values = 1
+                    )
   )
-wego |>
-  filter(TSP_STATUS == 1, DATE == "2025-05-05")
+
+wego |> 
+  filter(DATE >= "2025-05-05" & TSP_STATUS == 1) |> 
+  arrange(DATE)
+
 ```
 
-* May 12th @ 12 noon: TSP Headway-Conditional TSP Priority Begins (Only gapped buses with actual leading headway more than 120% of scheduled headway receive priority)
-```{r}
-wego <- wego |> 
-  # FROM DOWNTOWN (18)
-  mutate(
-      TSP_STATUS = replace(
-                      x = TSP_STATUS,
-                      list = (
-                          DATE == "2025-05-12" & 
-                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                          ROUTE_DIRECTION_NAME == "FROM DOWNTOWN" &
-                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46", "WHBG") 
-                        ),
-                      values = 1
-                    )
-  ) |> 
-  # TO DOWNTOWN (21)
-  mutate(
-      TSP_STATUS = replace(
-                      x = TSP_STATUS,
-                      list = (
-                          DATE == "2025-05-12" & 
-                          ACTUAL_DEPARTURE_HMS >= hms("12:00:00") &
-                          ROUTE_DIRECTION_NAME == "TO DOWNTOWN" &
-                          TIME_POINT_ABBR %in% c("MCC5_1", "28&CHARL", "CH46") 
-                        ),
-                      values = 1
-                    )
-  )
-wego |>
-  filter(TSP_STATUS == 1, DATE == "2025-05-12")
-```
 
 Here we are looking at only the active TSP Status.
 ```{r}
@@ -270,15 +181,51 @@ summary(wego_lr)
 ```
 The P value is not significant. 
 
+Create a binary logistic regression model for ADJUSTED_LATE_COUNT with TSP_STATUS
 ```{r}
-predict(
-  wego_lr,
-  newdata = data.frame(TSP_STATUS = c(1, 0)),
-  type = "response"
+adj_late_tsp_lrm = glm(
+  ADJUSTED_LATE_COUNT ~ as.factor(TSP_STATUS),
+  data = wego,
+  family = "binomial"
 )
+
+summary(adj_late_tsp_lrm)
 ```
 The TSP on = 7% chance of being late
 If it was off = 11% chance of being late
+
+Predict TSP on and off
+```{r}
+adj_late_tsp_predict <- predict(
+    adj_late_tsp_lrm,
+    newdata = data.frame(TSP_STATUS = c(1, 0)),
+    type = "response"
+  )
+
+adj_late_tsp_predict
+
+```
+
+Plot TSP on and off predict
+```{r}
+adj_late_tsp_plot <- plot_model(
+  adj_late_tsp_lrm,
+  type = "pred",
+  terms = "TSP_STATUS"
+) +
+  scale_x_continuous(
+    breaks = seq(0, 1),
+    labels = c("TSP OFF", "TSP ON")
+  ) +
+  labs(
+    title = "WeGo Predicted Probability of Late Departure",
+    subtitle = "Independent Variable: TSP STATUS",
+    y = "Probability of Late Departure"
+  )
+
+adj_late_tsp_plot
+```
+
 
 ```{r}
 wego_lr_sched_hms <- glm(ADJUSTED_LATE_COUNT ~ TSP_STATUS + hour(SCHEDULED_HMS), data=wego, family="binomial")
@@ -368,6 +315,10 @@ pred_data <- wego |>
     )
   )
 pred_data
+```
+```{r}
+pred_data |>
+  filter(TSP_STATUS == 1)
 ```
 
 
@@ -522,4 +473,9 @@ ggsave("../plots/cancelled_stops_plot.png")
 ```
 In summary:
 Cancelled stops are associated with a higher predicted probability of lateness, but TSP reduces lateness regardless of cancellation status. This was statistically significant. 
+
+
+
+
+
 
